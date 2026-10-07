@@ -4,7 +4,7 @@ Workflow GitHub Actions untuk quick-port ROM **AOSP** (LineageOS, AxionOS, crDro
 
 Diadaptasi dari repo *TEST-BUILD-Porting-HyperOS-Marble* (port HyperOS -> POCO F5). Mesin dasarnya sama (unpack payload/super, ekstrak EROFS/EXT4, patch fstab/vbmeta, cek VINTF/VNDK/linker, bangun super, zip recovery), bagian khusus MIUI diganti logika AOSP.
 
-> **TEST build.** Port lintas device selalu berisiko bootloop atau fitur mati. Backup dulu (mis. pakai modul backup partisi), dan pastikan bisa balik ke ROM sebelumnya lewat OrangeFox.
+> **TEST build.** Port lintas device selalu berisiko bootloop atau fitur mati. Backup dulu (mis. pakai modul backup partisi), dan pastikan bisa balik ke ROM sebelumnya lewat OrangeFox
 
 ## Cara kerja
 
