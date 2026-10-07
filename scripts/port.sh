@@ -214,6 +214,18 @@ check_url() { # label url  (cek cepat: bisa diakses + bukan halaman HTML, sebelu
     [[ $src =~ ^https?:// ]] || return 0
     url=$(dl_tool normalize "$src"); h=$(dl_tool host "$src")
     name=${src%%\?*}; name=${name##*/}
+    # link bertanda tangan sementara (mis. tombol download AfterLife = DigitalOcean Spaces, berlaku
+    # 1 jam): cek masa berlakunya dulu supaya pesan error jelas dan tidak gagal di tengah download
+    local sg left until valid
+    sg=$(dl_tool signed "$src" || true)
+    if [[ -n $sg ]]; then
+        read -r left until valid <<< "$sg"; until=${until//_/ }
+        if (( left <= 0 )); then
+            die "$label: link unduh bertanda tangan sementara sudah KEDALUWARSA sejak $until (berlaku $(( valid / 60 )) menit sejak dibuat). Ambil link baru dari halaman download lalu jalankan workflow segera, atau unggah ROM ke tempat permanen (GitHub Release / Google Drive / SourceForge): ${src%%\?*}"
+        fi
+        log "$label: link bertanda tangan sementara, masih berlaku $(( left / 60 )) menit (sampai $until)"
+        if (( left < 900 )); then warn "$label: sisa masa berlaku link < 15 menit, download bisa gagal kalau antre lama"; fi
+    fi
     tmp="$WORK/check_$label.bin"
     # cuma 512 byte pertama: head menutup pipe, jadi server yang mengabaikan Range tidak
     # membuat file ROM penuh ikut terunduh di sini. Kode HTTP dibaca dari header (redirect terakhir).
@@ -717,8 +729,14 @@ rom_branding() {
 # AfterLife di Tentang ponsel tanpa foto & link sosial media maintainer asli. Dipakai kalau build.prop
 # donor punya ro.<rom>.version. Dibangun saat port (apktool/aapt2), ditandatangani testkey, dipasang
 # ke product/overlay (RRO statis, aktif sendiri).
+BRANDING_OVERLAYS=${BRANDING_OVERLAYS:-true}    # false = jangan pasang RRO overlays/<rom>/
 branding_overlays() {
     local d rom name src w jar out kd="$WORK/aosp_testkey" n=0 rels=()
+    if ! is_true "$BRANDING_OVERLAYS"; then
+        [[ -d $SCRIPT_DIR/../overlays ]] && log "branding overlay: dimatikan (BRANDING_OVERLAYS=false)"
+        return 0
+    fi
+    [[ -n $ROM_MAINTAINER ]] || { log "branding overlay: ROM_MAINTAINER kosong, tampilan maintainer donor dipertahankan"; return 0; }
     [[ -d $SCRIPT_DIR/../overlays && -d $P_FS/product ]] || return 0
     for d in "$SCRIPT_DIR"/../overlays/*/; do
         rom=$(basename "$d")
@@ -1822,8 +1840,15 @@ main() {
     group_end
 
     # ---------------- 1. BASE
+    local base_file port_file=""
+    # link port bertanda tangan sementara (berlaku ~1 jam): unduh duluan, sebelum base diunduh &
+    # diekstrak, supaya tidak keburu kedaluwarsa
+    if [[ $PORT_ROM =~ ^https?:// && -n $(dl_tool signed "$PORT_ROM" || true) ]]; then
+        group_start "Port ROM: unduh duluan (link sementara)"
+        port_file=$(fetch "$PORT_ROM" "$WORK/dl" port_rom)
+        group_end
+    fi
     group_start "1/7 Base ROM ($TARGET_DEVICE)"
-    local base_file port_file
     base_file=$(fetch "$BASE_ROM" "$WORK/dl" base_rom)
     unpack_rom "$base_file" "$B_IMG" base all
     load_base_env
@@ -1851,7 +1876,7 @@ main() {
 
     # ---------------- 2. PORT
     group_start "2/7 Port ROM (donor AOSP)"
-    port_file=$(fetch "$PORT_ROM" "$WORK/dl" port_rom)
+    [[ -n $port_file ]] || port_file=$(fetch "$PORT_ROM" "$WORK/dl" port_rom)
     unpack_rom "$port_file" "$P_IMG" port "${PORT_PARTITIONS// /,}"
     for p in $PORT_PARTITIONS; do
         [[ -f $P_IMG/$p.img ]] || { warn "port tidak punya $p.img, pakai milik base"; continue; }
